@@ -67,6 +67,27 @@ void ecp_handle_stat(void)
 	memcpy(&rf_peer_crcinit, &ecp_rxbuf[28], 4);
 }
 
+void ecp_handle_rf_rxdata(void)
+{
+	uint32_t ticks;
+	memcpy(&ticks, &ecp_rxbuf[2], 4);
+	uint8_t channel;
+	channel = ecp_rxbuf[6];
+	uint8_t attr;
+	attr = ecp_rxbuf[7];
+	uint8_t *p;
+	p = &ecp_rxbuf[8];
+	uint8_t plen;
+	plen = ecp_rxidx - 8 - 1;
+	printf("TIME %d CHANNEL %d ATTR %02X PLEN %d PAYLOAD: ", ticks, channel,
+	       attr, plen);
+	int i;
+	for (i = 0; i < plen; i++) {
+		printf("%02X ", p[i]);
+	}
+	printf("\r\n");
+}
+
 void ecp_handle_rxpkt(void)
 {
 	uint16_t crcidx;
@@ -88,6 +109,9 @@ void ecp_handle_rxpkt(void)
 		return;
 	case ECP_CMD_STAT:
 		ecp_handle_stat();
+		return;
+	case ECP_CMD_RF_RXDATA:
+		ecp_handle_rf_rxdata();
 		return;
 	}
 }
@@ -276,12 +300,50 @@ void ecp_send_rf_start(void)
 	ecp_end();
 }
 
+void ecp_send_rf_set_chan(uint8_t channel)
+{
+	uint8_t c = 0;
+	uint8_t crc = 0;
+	ecp_end();
+	c = ECP_CMD_RF_SET_CHAN;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	c = ecp_seqn;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	ecp_seqn += 1;
+	c = channel;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	ecp_send(crc);
+	ecp_end();
+}
+
+void ecp_send_rf_set_access_addr(uint32_t access_addr)
+{
+	uint8_t c = 0;
+	uint8_t crc = 0;
+	ecp_end();
+	c = ECP_CMD_RF_SET_ACCESS_ADDR;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	c = ecp_seqn;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	ecp_seqn += 1;
+	ecp_send_buf((uint8_t *)&access_addr, 4);
+	crc = crc8_ccitt_buf(crc, (uint8_t *)&access_addr, 4);
+	ecp_send(crc);
+	ecp_end();
+}
+
 void ecp_show_link_stat(void)
 {
 	static uint32_t prev_ticks = 0;
 	if ((ticks_625us - prev_ticks) < 1600) {
 		return;
 	}
+	prev_ticks = ticks_625us;
 	//printf("ECP LAST D2H TIME: %d\r\n", ecp_last_rx_time);
 	//printf("ECP LAST H2D TIME: %d\r\n", ecp_last_tx_time);
 	static uint32_t prev_ecp_peer_rx_bytes = 0;
@@ -314,10 +376,10 @@ void periodic_1s_task(void)
 	if ((ticks_625us - prev_ticks) < 1600) {
 		return;
 	}
+	prev_ticks = ticks_625us;
 	ecp_show_link_stat();
 	ecp_send_ping(ping_data, sizeof(ping_data));
 	ecp_send_stat();
-	prev_ticks = ticks_625us;
 }
 
 void main_loop(void)
