@@ -34,7 +34,7 @@ uint8_t rf_peer_channel = 0;
 uint32_t rf_peer_access_addr = 0x0;
 uint32_t rf_peer_crcinit = 0x0;
 
-struct fifo8 fifo8_ecp_tx = FIFO8_INIT(4096);
+struct fifo8 fifo8_ecp_tx = FIFO8_INIT(8192);
 
 #define ECP_BUFSIZE 768
 
@@ -337,6 +337,24 @@ void ecp_send_rf_set_access_addr(uint32_t access_addr)
 	ecp_end();
 }
 
+void ecp_send_rf_set_crc_init(uint32_t crcinit)
+{
+	uint8_t c = 0;
+	uint8_t crc = 0;
+	ecp_end();
+	c = ECP_CMD_RF_SET_CRC_INIT;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	c = ecp_seqn;
+	ecp_send(c);
+	crc = crc8_ccitt_byte(crc, c);
+	ecp_seqn += 1;
+	ecp_send_buf((uint8_t *)&crcinit, 4);
+	crc = crc8_ccitt_buf(crc, (uint8_t *)&crcinit, 4);
+	ecp_send(crc);
+	ecp_end();
+}
+
 void ecp_show_link_stat(void)
 {
 	static uint32_t prev_ticks = 0;
@@ -463,7 +481,9 @@ int main(int argc, char *argv[])
 	for (i = 0; i < sizeof(ping_data); i++) {
 		ping_data[i] = i;
 	}
-
+	ecp_send_rf_set_access_addr(0x8E89BED6);
+	ecp_send_rf_set_crc_init(0x555555);
+	ecp_send_rf_set_chan(37);
 	ecp_send_rf_start();
 	main_loop();
 	exit(EXIT_SUCCESS);
